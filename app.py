@@ -1,38 +1,31 @@
 import logging
-import os
 import random
 import time
 
-# Telemetry must be configured BEFORE Flask is imported, so requests are tracked
-if os.environ.get("APPLICATIONINSIGHTS_CONNECTION_STRING"):
-    from azure.monitor.opentelemetry import configure_azure_monitor
-    configure_azure_monitor(logger_name="obsdemo")
+import newrelic.agent
+newrelic.agent.initialize()   # reads NEW_RELIC_* environment variables; must run before Flask is imported
 
 from flask import Flask, jsonify
-from opentelemetry import trace
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("obsdemo")
 logger.setLevel(logging.INFO)
-tracer = trace.get_tracer("obsdemo")
-app = Flask(__name__)
 
+app = Flask(__name__)
 
 @app.route("/")
 def index():
     logger.info("route=/")
     return "App is running\n"
 
-
 @app.route("/slow")
 def slow():
     delay = random.uniform(2, 6)
-    with tracer.start_as_current_span("slow-work") as span:
-        span.set_attribute("demo.delay_seconds", round(delay, 2))
+    newrelic.agent.add_custom_attribute("demo.delay_seconds", round(delay, 2))
+    with newrelic.agent.FunctionTrace(name="slow-work"):
         time.sleep(delay)
     logger.info("route=/slow delay=%.2fs", delay)
     return f"Done after {delay:.2f} seconds\n"
-
 
 @app.route("/error")
 def error():
